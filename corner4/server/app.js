@@ -6,6 +6,8 @@ const dotenv = require('dotenv');
 const path = require('path');
 const nunjucks = require('nunjucks');
 const passport = require('passport');
+const csrf = require('csurf'); // CSRF protection middleware
+const rateLimit = require('express-rate-limit'); // Rate limiting middleware
 
 dotenv.config();
 const indexRouter = require('./routes');
@@ -57,13 +59,23 @@ app.use(session({
   secret: process.env.COOKIE_SECRET,
   cookie: {
     httpOnly: true,
-    secure: false,
+    secure: process.env.NODE_ENV === 'production', // Ensure cookies are secure in production
   },
   name: 'session-cookie',
 }));
 
 app.use(passport.initialize());
 app.use(passport.session());
+
+// CSRF protection
+app.use(csrf());
+
+// Rate limiting
+const limiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 100, // limit each IP to 100 requests per windowMs
+});
+app.use(limiter);
 
 app.use('/', pageRouter);
 app.use('/auth', authRouter);
@@ -79,7 +91,7 @@ app.use('/api/bookRecommendation', bookRecommendationRouter);
 const fs = require('fs');
 
 app.get('/:page', (req, res) => {
-  const page = req.params.page;
+  const page = path.basename(req.params.page); // Sanitize user input
   const filePath = path.join(__dirname, 'views', `${page}.html`);
 
   fs.access(filePath, fs.constants.F_OK, (err) => {
